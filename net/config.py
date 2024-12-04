@@ -24,20 +24,22 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 ''' runtime flags '''
 SHOW_DATASET_PREVIEW = False
-AUGMENT = True
+AUGMENT = False
 TENSORBOARD_VISUALIZE = True
 
 ''' dataset params '''
 TRAIN_SIZE = 0.8
-AUGMENT_SIZE = 0.8
+AUGMENT_SIZE = 0.9
 BATCH_SIZE = 32
 
 ''' pretrained model params '''
 PRETRAINED_WEIGHTS = os.path.join(SCRIPT_DIR, '../weights', 'pretrained_model_weights.pth')
 PRETRAINED_VISUALIZE_MODEL = False
 PRETRAINED_BACKBONE = 'resnet18'
+TRAIN_PRETRAINED = False
+TEST_PRETRAINED = True
 PRETRAINED_LR = 1e-4
-PRETRAINED_EPOCHS = 1
-TRAIN_PRETRAINED = True
+PRETRAINED_EPOCHS = 80
+
 
 

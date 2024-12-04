@@ -27,16 +27,40 @@ def hex_to_rgb(hex_value):
     return (r, g, b)
 
 
+def compute_iou(pred_mask, true_mask, num_classes=NUM_CLASSES):
+
+    pred_mask = torch.from_numpy(pred_mask)  
+    true_mask = torch.from_numpy(true_mask)  
+
+    ious = []
+    for cls in range(num_classes):
+        # Crea maschere binarie per la classe corrente
+        pred_cls = (pred_mask == cls)
+        true_cls = (true_mask == cls)
+
+        # Calcola l'intersezione e l'unione
+        intersection = torch.sum(pred_cls & true_cls).float()
+        union = torch.sum(pred_cls | true_cls).float()
+
+        # Calcola l'IoU, evitando la divisione per zero
+        iou = intersection / union if union > 0 else torch.tensor(0.0)
+        ious.append(iou)
+
+    return torch.tensor(ious)
+
 ''' allinea classi [0..4] e colori descritti nel json '''
-def align_class_colors(mask, json_dir=JSON_FILE):
+def align_class_colors(mask, json_dir=JSON_FILE, on_gpu=True):
 
     with open(json_dir, 'r') as f:
         json_description = json.load(f)
 
     classes_colors = {tag['name']: tag['color'] for tag in json_description['tags']}
-    mask_array = np.array(mask)
+    if on_gpu:
+        mask_array = np.array(mask.cpu())
+    else:
+        mask_array = np.array(mask)
     rgb_image = np.ones((mask_array.shape[0], mask_array.shape[1], 3), dtype=np.uint8) * 255 
-    print(f"[?] Aligning mask to json colors. Unique values in mask_array: {np.unique(mask_array)}")
+    #print(f"[?] Aligning mask to json colors. Unique values in mask_array: {np.unique(mask_array)}")
     for class_name, hex_color in classes_colors.items():
 
         rgb = hex_to_rgb(hex_color)
@@ -108,7 +132,7 @@ def overlap_mask_img(img, mask, json_dir=JSON_FILE, alpha=0.3, show=True):
         return overlapped_img
 
 
-def train_model(model, train_loader, optimizer, criterion, num_epochs, device, test_loader=None, tensorboard=None):
+def train_model(model, train_loader, optimizer, criterion, num_epochs, device, test_loader=None, tensorboard=None, scheduler=None):
     
     loss_record = MeanMetric()
     valid_loss_record = MeanMetric()
@@ -138,19 +162,89 @@ def train_model(model, train_loader, optimizer, criterion, num_epochs, device, t
         if tensorboard:
             tensorboard.plot_loss(torch.tensor(train_loss), epoch, f"Loss {model.__class__.__name__}")
 
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {train_loss:.4f}")
-
         if test_loader:
             model.eval()
-            to_tensor = ToTensor()
-            for test_batch, _ in test_loader:
-                test_batch = test_batch.to(device)
-                with torch.no_grad():
-                    model_outs = model.predict(test_batch)
-                out = []
-                for model_out in model_outs:
-                    out_aligned, _ = align_class_colors(model_out)
-                    if not isinstance(out_aligned, torch.Tensor):
-                        out_aligned = to_tensor(out_aligned)  
-                    out.append(out_aligned)
-                tensorboard.visualize_image_batch(out, epoch, f"{model.__class__.__name__} training reconstruction") 
+            valid_loss = 0.0
+            with torch.no_grad():
+                for imgs, masks in test_loader:
+                    imgs, masks = imgs.to(device), masks.to(device)
+
+                    outputs = model(imgs)
+                    loss = criterion(outputs, masks)
+                    valid_loss += loss.item()
+
+            valid_loss = valid_loss / len(test_loader)
+            valid_loss_record.update(valid_loss)
+
+            if tensorboard:
+                tensorboard.plot_loss(torch.tensor(valid_loss), epoch, f"Validation Loss {model.__class__.__name__}")
+
+        if scheduler:
+            scheduler.step(valid_loss)
+
+        print(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {train_loss:.4f}, Validation Loss: {valid_loss:.4f}")
+
+
+def test_model(model, val_loader, show_samples=True, show_number=3):
+
+    all_imgs = []
+    all_masks = []
+    for imgs, masks in val_loader:
+        all_imgs.append(imgs)
+        all_masks.append(masks)
+    all_imgs = torch.cat(all_imgs, dim=0) 
+    all_masks = torch.cat(all_masks, dim=0)
+
+    model.eval()
+
+    with torch.no_grad():
+        model_masks = model.predict(all_imgs)
+
+    if show_samples:
+        fig, axes = plt.subplots(show_number, 3, figsize=(10, 3 * show_number))
+        
+        for i in range(show_number):
+
+            iou = compute_iou(model_masks[i].cpu().numpy(), all_masks[i].cpu().numpy())
+
+            print(f"[out] Mean Iou val {i}: {iou.mean()} Iou by class: {iou}")
+
+            # Immagine originale
+            axes[i, 0].imshow(all_imgs[i].permute(1, 2, 0).cpu().numpy())
+            axes[i, 0].set_title("Original Image")
+            axes[i, 0].axis('off')
+
+            # Maschera originale (allineamento colori opzionale)
+            real_mask, _ = align_class_colors(all_masks[i].cpu().numpy(), on_gpu=False)
+            axes[i, 1].imshow(real_mask)
+            axes[i, 1].set_title("True Mask")
+            axes[i, 1].axis('off')
+
+            # Maschera predetta (allineamento colori opzionale)
+            pred_mask, _ = align_class_colors(model_masks[i].cpu().numpy(), on_gpu=False)
+            axes[i, 2].imshow(pred_mask)
+            axes[i, 2].set_title("Predicted Mask")
+            axes[i, 2].axis('off')
+
+        plt.tight_layout()
+        plt.show()
+    
+    tot_iou_mean = []
+    tot_iou_class = np.zeros(NUM_CLASSES) 
+
+    for i in range(len(all_imgs)):
+        
+        iou = compute_iou(model_masks[i].cpu().numpy(), all_masks[i].cpu().numpy(), num_classes=NUM_CLASSES)
+
+        tot_iou_class += iou.cpu().numpy()
+        tot_iou_mean.append(iou.mean())
+
+    mean_iou = np.mean(tot_iou_mean)
+
+    mean_iou_class = tot_iou_class / len(all_imgs)
+
+    print(f"\n[out] Model: {model.__class__.__name__}:")
+    print(f"Mean IoU on the entire dataset: {mean_iou}")
+    print(f"Mean IoU by class on the entire dataset: {mean_iou_class}\n")
+
+

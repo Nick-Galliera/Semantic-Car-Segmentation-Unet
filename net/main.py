@@ -8,18 +8,24 @@ from custom_tensorboard import TensorboardVisualizer
 import matplotlib.pyplot as plt
 import numpy as np
 import random
+import os
 
 import torch
 from torch.utils.data import DataLoader, random_split
 from torch.utils.data import Subset
 import torch.optim as optim
-import torchvision.transforms.v2 as T
+import torchvision.transforms as T
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from segmentation_models_pytorch.encoders import get_preprocessing_fn
 
 
 if __name__ == '__main__':
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = "tesla:0, tesla:1, tesla:2, tesla:3, tesla:4, tesla:5, tesla:6, tesla:7, tesla:8, tesla:9, tesla:10, tesla:11, tesla:12, tesla:13, tesla:14, tesla:15"
+    print(f"[debug] aval gpus: {torch.cuda.device_count()}")
+    print(f"[debug] Device {DEVICE}")
+    
     if TENSORBOARD_VISUALIZE:
         tensorboard = TensorboardVisualizer(log_dir=LOG_DIR)
         tensorboard.prepare_folder()
@@ -77,19 +83,26 @@ if __name__ == '__main__':
     
     pretrained_model = Pretrained_U_net(encoder_name=PRETRAINED_BACKBONE, requiregrad_encoder=False, num_classes=NUM_CLASSES, activation=None).to(DEVICE)
 
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = optim.Adam(pretrained_model.model.decoder.parameters(), lr=PRETRAINED_LR) 
-    
+    pretrained_criterion = torch.nn.CrossEntropyLoss()
+    pretrained_optimizer = optim.Adam(pretrained_model.model.decoder.parameters(), lr=PRETRAINED_LR) 
+    pretrained_lrscheduler = ReduceLROnPlateau(pretrained_optimizer, 'min', patience=5, factor=0.1, verbose=True)
+
+    '''
     if TENSORBOARD_VISUALIZE:
         imgs, _ = next(iter(test))
         tensorboard.plot_graph(pretrained_model, imgs)
+    '''
     
     if TRAIN_PRETRAINED:
-        train_model(model=pretrained_model, train_loader=train, optimizer=optimizer, criterion=criterion, num_epochs=PRETRAINED_EPOCHS, device=DEVICE, test_loader=test, tensorboard=tensorboard)
+        train_model(model=pretrained_model, train_loader=train, optimizer=pretrained_optimizer, criterion=pretrained_criterion, num_epochs=PRETRAINED_EPOCHS, device=DEVICE, test_loader=test, tensorboard=tensorboard, scheduler=pretrained_lrscheduler)
         torch.save(pretrained_model.state_dict(), PRETRAINED_WEIGHTS)
     else:
         print(f"[?] Loading {PRETRAINED_WEIGHTS}")
-        pretrained_model.load_state_dict(torch.load(PRETRAINED_WEIGHTS, weights_only=True))
-
+        pretrained_model.load_state_dict(torch.load(PRETRAINED_WEIGHTS, map_location=torch.device('cpu')))
+    
+    if TEST_PRETRAINED:
+        test_model(model=pretrained_model, val_loader=test, show_samples=True)
 
     tensorboard.close()
+
+
