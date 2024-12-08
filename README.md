@@ -20,6 +20,9 @@ The model parameters, training settings, and paths are defined in the config.py 
 1. setup runtime mode in config.py
 2. Run the model with: _python main.py_
 
+## Weights
+Important: download weights from [drive](https://drive.google.com/drive/folders/1udwkYJ82kRoGECNK9OxzzxyfT1LfaNle?usp=share_link) and place them in the same director as the project
+
 ## Dataset
 The dataset is available on Kaggle and can be accessed [here](https://www.kaggle.com/datasets/intelecai/car-segmentation).Please place the dataset in the same directory as the project for proper loading.
 
