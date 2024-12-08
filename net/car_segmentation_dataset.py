@@ -1,9 +1,11 @@
-from torch.utils.data import Dataset
-import os
-import numpy as np
 import torch
-import glob
+from torch.utils.data import Dataset
+
+import numpy as np
 from PIL import Image
+import os
+import glob
+
 
 class CarSegmentationDataset(Dataset):
     def __init__(self, images_dir, masks_dir, image_transform=None, mask_transform=None):

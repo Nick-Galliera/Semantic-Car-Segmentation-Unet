@@ -20,12 +20,17 @@ CLASSES = {
 }
 NUM_CLASSES = 5
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
 
 ''' runtime flags '''
 SHOW_DATASET_PREVIEW = False
 AUGMENT = False
-TENSORBOARD_VISUALIZE = True
+TENSORBOARD_VISUALIZE = False
 
 ''' dataset params '''
 TRAIN_SIZE = 0.8
@@ -33,13 +38,17 @@ AUGMENT_SIZE = 0.9
 BATCH_SIZE = 32
 
 ''' pretrained model params '''
-PRETRAINED_WEIGHTS = os.path.join(SCRIPT_DIR, '../weights', 'pretrained_model_weights.pth')
+#PRETRAINED_WEIGHTS = os.path.join(SCRIPT_DIR, '../weights', 'pretrained_model_unet_res18_weights.pth')
+#PRETRAINED_BACKBONE = 'resnet18'
+#PRETRAINED_WEIGHTS = os.path.join(SCRIPT_DIR, '../weights', 'pretrained_model_unet_res34_weights.pth')
+#PRETRAINED_BACKBONE = 'resnet34'
+PRETRAINED_WEIGHTS = os.path.join(SCRIPT_DIR, '../weights', 'pretrained_model_unet_res101_weights.pth')
+PRETRAINED_BACKBONE = 'resnet101'
 PRETRAINED_VISUALIZE_MODEL = False
-PRETRAINED_BACKBONE = 'resnet18'
 TRAIN_PRETRAINED = False
 TEST_PRETRAINED = True
-PRETRAINED_LR = 1e-4
-PRETRAINED_EPOCHS = 80
+PRETRAINED_LR = 1e-5
+PRETRAINED_EPOCHS = 50
 
 
 
